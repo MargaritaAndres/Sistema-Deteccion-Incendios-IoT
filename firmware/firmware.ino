@@ -1,49 +1,69 @@
 #include "DHT.h"
+#include <ArduinoJson.h>
 
-// Configuración de Pines y Tipo de Sensor
-#define DHTPIN 4       // Pin de datos en GPIO 4
-#define DHTTYPE DHT11     // Sensor azul DHT11
-#define MQ7PIN 34         // GPIO34 para MQ-7
+// Definición de pines e instancias
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define MQ7PIN 34
 
 DHT dht(DHTPIN, DHTTYPE);
+
+// Muestreo no bloqueante con millis()
+unsigned long previousMillis = 0;
+const long interval = 2500; 
+
+// Filtro de Promedio Móvil para la señal del MQ-7 (Ventana N = 10)
+const int WINDOW_SIZE = 10;
+float windowBuffer[WINDOW_SIZE];
+int bufferIndex = 0;
+float windowSum = 0;
+
+float applyMovingAverage(float rawValue) {
+  windowSum -= windowBuffer[bufferIndex];
+  windowBuffer[bufferIndex] = rawValue;
+  windowSum += rawValue;
+  bufferIndex = (bufferIndex + 1) % WINDOW_SIZE;
+  return windowSum / WINDOW_SIZE;
+}
 
 void setup() {
   Serial.begin(115200);
   
-  // Tiempo de estabilización de energía para los sensores
-  delay(2000); 
-  
-  Serial.println("\n==========================================");
-  Serial.println("   INICIALIZANDO NODO SENSOR (MQ-7 + DHT11)");
-  Serial.println("==========================================");
+  // Inicialización del buffer del filtro
+  for (int i = 0; i < WINDOW_SIZE; i++) {
+    windowBuffer[i] = 0.0;
+  }
   
   dht.begin();
   pinMode(MQ7PIN, INPUT);
-  
-  // Pausa tras inicializar la librería DHT
-  delay(1000); 
 }
 
 void loop() {
-  // El DHT11 necesita al menos 2 segundos entre lecturas
-  delay(2500); 
+  unsigned long currentMillis = millis();
+  
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
 
-  // Lectura de temperatura y humedad
-  float temp = dht.readTemperature();
-  float hum = dht.readHumidity();
-  
-  // Lectura del MQ-7
-  int mq7_raw = analogRead(MQ7PIN);
-  
-  Serial.println("---- LECTURA EN TIEMPO REAL ----");
-  
-  if (isnan(temp) || isnan(hum)) {
-    Serial.println("[DHT11] Reintentando comunicación en GPIO 4...");
-  } else {
-    Serial.print("Temperatura: "); Serial.print(temp, 1); Serial.println(" °C");
-    Serial.print("Humedad:     "); Serial.print(hum, 1); Serial.println(" %");
+    // Lectura de variables analógicas y digitales
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+    float raw_mq7 = analogRead(MQ7PIN);
+    float filtered_mq7 = applyMovingAverage(raw_mq7);
+
+    // Construcción del Payload JSON estructurado
+    StaticJsonDocument<384> doc;
+    doc["node_id"] = "ESP32_FIRE_DETECTION";
+    
+    JsonObject data = doc.createNestedObject("data");
+    data["temp"] = isnan(temp) ? 0.0 : round(temp * 10.0) / 10.0;
+    data["hum"] = isnan(hum) ? 0.0 : round(hum * 10.0) / 10.0;
+    data["mq7_raw"] = raw_mq7;
+    data["mq7_filt"] = round(filtered_mq7 * 10.0) / 10.0;
+    
+    doc["heap_free"] = ESP.getFreeHeap();
+
+    // Emisión del JSON por puerto serial
+    serializeJson(doc, Serial);
+    Serial.println();
   }
-  
-  Serial.print("MQ-7 (Monóxido): "); Serial.print(mq7_raw); Serial.println(" (Valor ADC)");
-  Serial.println("--------------------------------\n");
 }
