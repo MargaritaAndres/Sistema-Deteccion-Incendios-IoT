@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard IoT - Detección de Incendios (P3)</title>
+    <!-- Chart.js para gráficas dinámicas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 20px; }
+        h1 { text-align: center; color: #333; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .badge { display: inline-block; padding: 10px 20px; border-radius: 20px; font-weight: bold; color: white; font-size: 1.2em; text-align: center; width: 80%; }
+        .bg-normal { background-color: #2ec4b6; }
+        .bg-alerta { background-color: #ff9f1c; }
+        .bg-incendio { background-color: #e71d36; }
+        .btn { padding: 12px 24px; font-size: 1em; border: none; border-radius: 5px; cursor: pointer; margin: 5px; color: white; font-weight: bold; }
+        .btn-on { background-color: #2ec4b6; }
+        .btn-off { background-color: #e71d36; }
+        .metrics { font-size: 1.1em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1> Sistema IoT Full-Stack con IA y Control Bidireccional</h1>
+
+    <div class="grid">
+        <!-- Tarjeta de Estado del IA -->
+        <div class="card" style="text-align: center;">
+            <h3>Diagnóstico Random Forest (IA)</h3>
+            <div id="badge-estado" class="badge bg-normal">Cargando...</div>
+            <div class="metrics" style="margin-top: 15px;">
+                <p><strong>Latencia (L):</strong> <span id="val-latencia">0</span> ms</p>
+                <p><strong>Secuencia ID:</strong> #<span id="val-secuencia">0</span></p>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Control Bidireccional -->
+        <div class="card" style="text-align: center;">
+            <h3>Control Bidireccional (Web -> ESP32)</h3>
+            <p>Enviar comandos en tiempo real al actuador físico:</p>
+            <button class="btn btn-on" onclick="enviarComando('ON')">ENCENDER ACTUADOR</button>
+            <button class="btn btn-off" onclick="enviarComando('OFF')">APAGAR ACTUADOR</button>
+            <p style="margin-top: 15px; font-size: 0.9em; color: #666;">Estado de conexión WS: <span id="status-ws">Desconectado</span></p>
+        </div>
+    </div>
+
+    <!-- Gráfica de Sensores -->
+    <div class="card" style="margin-top: 20px;">
+        <h3>Monitoreo Multivariable en Tiempo Real</h3>
+        <canvas id="sensorChart" height="100"></canvas>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

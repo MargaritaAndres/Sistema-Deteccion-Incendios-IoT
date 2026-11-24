@@ -1,0 +1,3 @@
+.env
+__pycache__/
+telemetria_p3.db
