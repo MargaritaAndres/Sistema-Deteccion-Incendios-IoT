@@ -7,9 +7,9 @@
 
 
 // Configuración de red Wi-Fi y Broker MQTT
-const char* ssid =TU_WIFI_SSID";            // red Wi-Fi
-const char* password = "TU_WIFI_PASSWORD";    // contraseña
-const char* mqtt_server = "172.20.10.3"; // IP laptop
+const char* ssid ="charliecharlie";            // red Wi-Fi
+const char* password = "123456789";    // contraseña
+const char* mqtt_server = "192.168.137.78"; // IP laptop
 
 // Tópicos MQTT
 const char* topic_telemetria = "sensores/incendios/telemetria";

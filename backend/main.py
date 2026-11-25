@@ -57,13 +57,13 @@ def init_db():
 init_db()
 
 # 2. CARGA DEL MODELO MACHINE LEARNING (RANDOM FOREST)
-# El modelo se entrenó con las columnas [valor, latencia, delta_t_ms] y
+# El modelo blindado se entrenó con [temp, hum, mq7_filt] y
 # devuelve 0 = Normal, 1 = Advertencia, 2 = Crítico.
 try:
-    rf_model = joblib.load("modelo_random_forest_iot.pkl")
-    print("--> Modelo Random Forest cargado exitosamente desde .pkl")
+    rf_model = joblib.load("modelo_rf_real.pkl")
+    print("--> Modelo Random Forest real cargado exitosamente desde 'modelo_rf_real.pkl'")
 except Exception as e:
-    print(f"--> Aviso: No se pudo cargar 'modelo_random_forest_iot.pkl'. Sin modelo NO se enviarán alertas. ({e})")
+    print(f"--> Aviso: No se pudo cargar 'modelo_rf_real.pkl'. Sin modelo NO se enviarán alertas. ({e})")
     rf_model = None
 
 # Nombres iguales a los que ya usa el dashboard
@@ -74,17 +74,16 @@ def clasificar_estado(temp, hum, mq7_filt, latencia_ms, delta_t_ms):
     """Devuelve (nombre_estado, codigo). El codigo es None si no hubo inferencia del modelo."""
     if rf_model is not None:
         try:
-            # Mapeo: valor = mq7_filt (gas), latencia y delta_t_ms calculados en el backend
-            X = np.array([[mq7_filt, latencia_ms, delta_t_ms]])
+            X = np.array([[temp, hum, mq7_filt]])
             codigo = int(rf_model.predict(X)[0])
             return NOMBRES_ESTADO.get(codigo, str(codigo)), codigo
         except Exception as ex:
             print("Error durante la inferencia ML:", ex)
 
-    # Lógica de respaldo SOLO para mostrar algo en el dashboard (no dispara alertas)
-    if mq7_filt > 600 or temp > 45.0:
+    # Lógica de respaldo calibrada a tu sensor real (no dispara alertas)
+    if mq7_filt > 2000 or temp > 45.0:
         return "Incendio Inminente", None
-    elif mq7_filt > 350 or temp > 35.0:
+    elif mq7_filt > 950 or temp > 35.0:
         return "Riesgo / Alerta", None
     return "Operación Normal", None
 

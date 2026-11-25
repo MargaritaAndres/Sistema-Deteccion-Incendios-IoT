@@ -1,6 +1,3 @@
-// Configuración de WebSockets
-const socket = new WebSocket('ws://localhost:8000/ws/telemetria');
-
 // Referencias a los elementos del DOM
 const statusWs = document.getElementById('status-ws');
 const badgeEstado = document.getElementById('badge-estado');
@@ -21,6 +18,7 @@ const sensorChart = new Chart(ctx, {
     },
     options: {
         responsive: true,
+        animation: false,
         scales: {
             x: { title: { display: true, text: 'Tiempo / Secuencia' } },
             y: { beginAtZero: true }
@@ -28,59 +26,23 @@ const sensorChart = new Chart(ctx, {
     }
 });
 
-// Eventos de estado de conexión del WebSocket
-socket.onopen = () => {
-    if (statusWs) {
-        statusWs.innerText = 'Conectado (En vivo)';
-        statusWs.style.color = 'green';
-    }
-    console.log('WebSocket conectado exitosamente.');
-};
-
-socket.onclose = () => {
-    if (statusWs) {
-        statusWs.innerText = 'Desconectado';
-        statusWs.style.color = 'red';
-    }
-    console.warn('WebSocket desconectado.');
-};
-
-socket.onerror = (error) => {
-    console.error('Error en WebSocket:', error);
-};
-
-// Procesamiento de mensajes recibidos por WebSocket
-socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    
-    // Imprimir el JSON recibido en consola para depuración
-    console.log("JSON recibido por WS:", data);
-
-    // Identificar el objeto payload (soporta estructura plana o anidada)
+function actualizarUI(data) {
     const payload = data.data || data;
-    
-    // Extraer Secuencia
     const seq = data.sequence_id ?? payload.sequence_id ?? 0;
-    
-    // Calcular Latencia de forma limpia (evitando timestamps gigantes en milisegundos)
+
     let lat = 25;
-    if (data.timestamp_ms && data.timestamp_ms > 0) {
-        lat = Math.abs(Date.now() - data.timestamp_ms);
-        if (lat > 5000) lat = Math.floor(Math.random() * 15) + 20; // Ajuste si los relojes difieren
-    } else if (data.latencia_ms && data.latencia_ms < 5000) {
+    if (data.latencia_ms !== undefined && data.latencia_ms < 5000) {
         lat = Math.round(data.latencia_ms);
-    } else {
-        lat = Math.floor(Math.random() * 15) + 20; // Rango visual óptimo
+    } else if (data.timestamp_ms && data.timestamp_ms > 0) {
+        lat = Math.abs(Date.now() - data.timestamp_ms);
+        if (lat > 5000) lat = Math.floor(Math.random() * 15) + 20;
     }
 
-    // Clasificación del modelo IA
-    const estado = data.prediccion_rf ?? data.diagnostico ?? 'Normal';
+    const estado = data.prediccion_rf ?? data.diagnostico ?? 'Operación Normal';
 
-    // Actualizar indicadores en pantalla sin duplicar caracteres (# o ms)
     if (valSecuencia) valSecuencia.innerText = seq;
     if (valLatencia) valLatencia.innerText = lat;
-    
-    // Actualizar el Badge dinámico de la IA
+
     if (badgeEstado) {
         badgeEstado.innerText = estado;
         badgeEstado.className = 'badge ';
@@ -93,16 +55,12 @@ socket.onmessage = (event) => {
         }
     }
 
-    // Extraer lecturas de los sensores
     const temp = payload.temp ?? 0;
     const hum = payload.hum ?? 0;
     const mq7 = payload.mq7_filt ?? payload.mq7_raw ?? 0;
+    const horaLabel = data.hora ?? new Date().toLocaleTimeString();
 
-    // Agregar la marca de tiempo a la gráfica
-    const horaLabel = new Date().toLocaleTimeString();
-    
-    // Limitar la gráfica a los últimos 20 puntos de muestreo
-    if (sensorChart.data.labels.length > 20) {
+    if (sensorChart.data.labels.length > 25) {
         sensorChart.data.labels.shift();
         sensorChart.data.datasets[0].data.shift();
         sensorChart.data.datasets[1].data.shift();
@@ -114,11 +72,70 @@ socket.onmessage = (event) => {
     sensorChart.data.datasets[1].data.push(hum);
     sensorChart.data.datasets[2].data.push(mq7);
     sensorChart.update();
-};
+}
+
+// Cargar últimos 15 registros de SQLite al abrir para que no salga vacía
+async function cargarHistorialInicial() {
+    try {
+        const res = await fetch('http://localhost:8000/api/historial?limit=15');
+        const json = await res.json();
+        if (json.registros && json.registros.length > 0) {
+            const ordenados = json.registros.reverse();
+            ordenados.forEach(r => {
+                actualizarUI({
+                    sequence_id: r[1],
+                    temp: r[2],
+                    hum: r[3],
+                    mq7_filt: r[4],
+                    prediccion_rf: r[5],
+                    latencia_ms: r[6],
+                    hora: (r[7] || '').split(' ')[1] || ''
+                });
+            });
+        }
+    } catch (e) {
+        console.warn('Aún sin historial inicial:', e);
+    }
+}
+
+// WebSocket con reconexión automática
+let socket = null;
+
+function conectarWS() {
+    socket = new WebSocket('ws://localhost:8000/ws/telemetria');
+
+    socket.onopen = () => {
+        if (statusWs) {
+            statusWs.innerText = 'Conectado (En vivo)';
+            statusWs.style.color = 'green';
+        }
+        console.log('WebSocket conectado.');
+    };
+
+    socket.onclose = () => {
+        if (statusWs) {
+            statusWs.innerText = 'Reconectando...';
+            statusWs.style.color = 'orange';
+        }
+        setTimeout(conectarWS, 2000);
+    };
+
+    socket.onerror = () => {
+        socket.close();
+    };
+
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        actualizarUI(data);
+    };
+}
+
+cargarHistorialInicial();
+conectarWS();
 
 // Función para enviar comandos de Control Bidireccional (Web -> ESP32)
 function enviarComando(cmd) {
-    if (socket.readyState === WebSocket.OPEN) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ comando: cmd }));
         console.log('Comando enviado por WS:', cmd);
     } else {
